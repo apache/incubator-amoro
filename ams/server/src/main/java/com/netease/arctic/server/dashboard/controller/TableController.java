@@ -19,7 +19,6 @@
 package com.netease.arctic.server.dashboard.controller;
 
 import com.netease.arctic.AmoroTable;
-import com.netease.arctic.ams.api.CatalogMeta;
 import com.netease.arctic.ams.api.Constants;
 import com.netease.arctic.ams.api.TableFormat;
 import com.netease.arctic.catalog.CatalogLoader;
@@ -27,11 +26,7 @@ import com.netease.arctic.hive.HiveTableProperties;
 import com.netease.arctic.hive.catalog.ArcticHiveCatalog;
 import com.netease.arctic.hive.utils.HiveTableUtil;
 import com.netease.arctic.hive.utils.UpgradeHiveTableUtil;
-import com.netease.arctic.server.catalog.IcebergCatalogImpl;
-import com.netease.arctic.server.catalog.InternalIcebergCatalogImpl;
 import com.netease.arctic.server.catalog.MixedHiveCatalogImpl;
-import com.netease.arctic.server.catalog.PaimonServerCatalog;
-import com.netease.arctic.server.catalog.ServerCatalog;
 import com.netease.arctic.server.dashboard.ServerTableDescriptor;
 import com.netease.arctic.server.dashboard.ServerTableProperties;
 import com.netease.arctic.server.dashboard.model.AMSColumnInfo;
@@ -68,12 +63,10 @@ import org.apache.iceberg.relocated.com.google.common.util.concurrent.ThreadFact
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -397,72 +390,6 @@ public class TableController {
     ctx.json(OkResponse.of(amsPageResult));
   }
 
-  /**
-   * get table list of catalog.db.
-   *
-   * @param ctx - context for handling the request and response
-   */
-  public void getTableList(Context ctx) {
-    String catalog = ctx.pathParam("catalog");
-    String db = ctx.pathParam("db");
-    String keywords = ctx.queryParam("keywords");
-    Preconditions.checkArgument(
-        StringUtils.isNotBlank(catalog) && StringUtils.isNotBlank(db),
-        "catalog.database can not be empty in any element");
-
-    List<com.netease.arctic.ams.api.TableIdentifier> tableIdentifiers = tableService.listTables(catalog, db);
-    ServerCatalog serverCatalog = tableService.getServerCatalog(catalog);
-    List<TableMeta> tables = new ArrayList<>();
-
-    if (serverCatalog instanceof IcebergCatalogImpl || serverCatalog instanceof InternalIcebergCatalogImpl) {
-      tableIdentifiers.forEach(e -> tables.add(new TableMeta(
-          e.getTableName(),
-          TableMeta.TableType.ICEBERG.toString())));
-    } else if (serverCatalog instanceof MixedHiveCatalogImpl) {
-      tableIdentifiers.forEach(e -> tables.add(new TableMeta(e.getTableName(), TableMeta.TableType.ARCTIC.toString())));
-      List<String> hiveTables = HiveTableUtil.getAllHiveTables(
-          ((MixedHiveCatalogImpl) serverCatalog).getHiveClient(),
-          db);
-      Set<String> arcticTables =
-          tableIdentifiers.stream()
-              .map(com.netease.arctic.ams.api.TableIdentifier::getTableName)
-              .collect(Collectors.toSet());
-      hiveTables.stream().filter(e -> !arcticTables.contains(e)).forEach(e -> tables.add(new TableMeta(
-          e,
-          TableMeta.TableType.HIVE.toString())));
-    } else if (serverCatalog instanceof PaimonServerCatalog) {
-      tableIdentifiers.forEach(e -> tables.add(new TableMeta(e.getTableName(), TableMeta.TableType.PAIMON.toString())));
-    } else {
-      tableIdentifiers.forEach(e -> tables.add(new TableMeta(e.getTableName(), TableMeta.TableType.ARCTIC.toString())));
-    }
-    ctx.json(OkResponse.of(tables.stream().filter(t -> StringUtils.isBlank(keywords) ||
-        t.getName().contains(keywords)).collect(Collectors.toList())));
-  }
-
-  /**
-   * get databases of some catalog.
-   *
-   * @param ctx - context for handling the request and response
-   */
-  public void getDatabaseList(Context ctx) {
-    String catalog = ctx.pathParam("catalog");
-    String keywords = ctx.queryParam("keywords");
-
-    List<String> dbList = tableService.listDatabases(catalog).stream()
-        .filter(item -> StringUtils.isBlank(keywords) || item.contains(keywords))
-        .collect(Collectors.toList());
-    ctx.json(OkResponse.of(dbList));
-  }
-
-  /**
-   * get list of catalogs.
-   *
-   * @param ctx - context for handling the request and response
-   */
-  public void getCatalogs(Context ctx) {
-    List<CatalogMeta> catalogs = tableService.listCatalogMetas();
-    ctx.json(OkResponse.of(catalogs));
-  }
 
   /**
    * get single page query token.
