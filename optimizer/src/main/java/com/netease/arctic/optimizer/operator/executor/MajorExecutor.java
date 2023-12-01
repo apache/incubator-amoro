@@ -24,6 +24,9 @@ import com.netease.arctic.data.DataTreeNode;
 import com.netease.arctic.data.PrimaryKeyedFile;
 import com.netease.arctic.hive.io.reader.AdaptHiveGenericArcticDataReader;
 import com.netease.arctic.hive.io.writer.AdaptHiveGenericTaskWriterBuilder;
+import com.netease.arctic.hive.table.SupportHive;
+import com.netease.arctic.hive.utils.HiveTableUtil;
+import com.netease.arctic.hive.utils.TableTypeUtil;
 import com.netease.arctic.optimizer.OptimizerConfig;
 import com.netease.arctic.scan.ArcticFileScanTask;
 import com.netease.arctic.scan.BasicArcticFileScanTask;
@@ -33,8 +36,10 @@ import com.netease.arctic.table.ArcticTable;
 import com.netease.arctic.table.KeyedTable;
 import com.netease.arctic.table.PrimaryKeySpec;
 import com.netease.arctic.table.WriteOperationKind;
+import com.netease.arctic.utils.TableFileUtils;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.TableProperties;
@@ -42,10 +47,11 @@ import org.apache.iceberg.data.IdentityPartitionConverters;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.io.CloseableIterator;
 import org.apache.iceberg.io.TaskWriter;
-import org.apache.iceberg.util.PropertyUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -59,11 +65,21 @@ public class MajorExecutor extends AbstractExecutor {
     super(nodeTask, table, startTime, config);
   }
 
+  protected long inputSize() {
+    return task.dataFiles().stream().mapToLong(DataFile::fileSizeInBytes).sum();
+  }
+
   @Override
   public OptimizeTaskResult execute() throws Exception {
     Iterable<DataFile> targetFiles;
     LOG.info("Start processing arctic table major optimize task {} of {}: {}", task.getTaskId(),
         task.getTableIdentifier(), task);
+    if (supportCopyFiles()) {
+      LOG.info("Task {} of {} enables copy files, copy {} data files", task.getTaskId(), task.getTableIdentifier(),
+          task.dataFiles().size());
+      targetFiles = copyFiles(task.dataFiles(), task.getCustomHiveSubdirectory());
+      return buildOptimizeResult(targetFiles);
+    }
 
     Map<DataTreeNode, List<DeleteFile>> deleteFileMap = groupDeleteFilesByNode(task.posDeleteFiles());
     List<PrimaryKeyedFile> dataFiles = task.dataFiles();
@@ -77,6 +93,32 @@ public class MajorExecutor extends AbstractExecutor {
     return buildOptimizeResult(targetFiles);
   }
 
+  private boolean supportCopyFiles() {
+    return TableTypeUtil.isHive(table) && task.isCopyFiles() && task.getCustomHiveSubdirectory() != null &&
+        task.posDeleteFiles().isEmpty() && task.deleteFiles().isEmpty();
+  }
+
+  private Iterable<DataFile> copyFiles(List<PrimaryKeyedFile> dataFiles, String customHiveSubdirectory) {
+    // Only mixed hive tables support copying files
+    List<DataFile> targetFiles = new ArrayList<>(dataFiles.size());
+    for (PrimaryKeyedFile dataFile : dataFiles) {
+      String hiveLocation = HiveTableUtil.newHiveDataLocation(((SupportHive) table).hiveLocation(),
+          table.spec(), dataFile.partition(), customHiveSubdirectory);
+
+      String sourcePath = dataFile.path().toString();
+      String sourceFileName = TableFileUtils.getFileName(sourcePath);
+
+      // The copied files must be hidden files, which are start with `.`
+      String targetPath = hiveLocation + File.separator + "." + sourceFileName;
+      long startTime = System.currentTimeMillis();
+      table.io().copy(sourcePath, targetPath);
+      LOG.info("Successfully copied file {}, cost {} ms", sourcePath,
+          System.currentTimeMillis() - startTime);
+      targetFiles.add(DataFiles.builder(table.spec()).copy(dataFile).withPath(targetPath).build());
+    }
+    return targetFiles;
+  }
+
   @Override
   public void close() {
   }
@@ -88,9 +130,7 @@ public class MajorExecutor extends AbstractExecutor {
     } else {
       transactionId = null;
     }
-    long targetFileSize = PropertyUtil.propertyAsLong(table.properties(),
-        com.netease.arctic.table.TableProperties.SELF_OPTIMIZING_TARGET_SIZE,
-        com.netease.arctic.table.TableProperties.SELF_OPTIMIZING_TARGET_SIZE_DEFAULT);
+    long targetFileSize = targetFileSize(inputSize());
     TaskWriter<Record> writer = AdaptHiveGenericTaskWriterBuilder.builderFor(table)
         .withTransactionId(transactionId)
         .withTaskId(task.getAttemptId())
