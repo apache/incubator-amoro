@@ -30,7 +30,6 @@ import com.netease.arctic.hive.utils.UpgradeHiveTableUtil;
 import com.netease.arctic.server.catalog.MixedHiveCatalogImpl;
 import com.netease.arctic.server.catalog.ServerCatalog;
 import com.netease.arctic.server.dashboard.ServerTableDescriptor;
-import com.netease.arctic.server.dashboard.ServerTableProperties;
 import com.netease.arctic.server.dashboard.model.AMSColumnInfo;
 import com.netease.arctic.server.dashboard.model.AmoroSnapshotsOfTable;
 import com.netease.arctic.server.dashboard.model.DDLInfo;
@@ -249,7 +248,6 @@ public class TableController {
         .filter(key -> !key.endsWith("_DEFAULT"))
         .forEach(
             key -> keyValues.put(tableProperties.get(key), tableProperties.get(key + "_DEFAULT")));
-    ServerTableProperties.HIDDEN_EXPOSED.forEach(keyValues::remove);
     Map<String, String> hiveProperties =
         AmsUtil.getNotDeprecatedAndNotInternalStaticFields(HiveTableProperties.class);
 
