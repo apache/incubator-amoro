@@ -25,6 +25,7 @@ import com.netease.arctic.io.ArcticFileIO;
 import com.netease.arctic.io.PathInfo;
 import com.netease.arctic.io.SupportsFileSystemOperations;
 import com.netease.arctic.server.ArcticServiceConstants;
+import com.netease.arctic.server.optimizing.OptimizingProcess;
 import com.netease.arctic.server.table.DataExpirationConfig;
 import com.netease.arctic.server.table.TableConfiguration;
 import com.netease.arctic.server.table.TableRuntime;
@@ -405,13 +406,12 @@ public class IcebergTableMaintainer implements TableMaintainer {
    *     optimizing process exists
    */
   public static long fetchOptimizingPlanSnapshotTime(Table table, TableRuntime tableRuntime) {
-    if (tableRuntime.getOptimizingStatus().isProcessing()) {
-      long fromSnapshotId = tableRuntime.getOptimizingProcess().getTargetSnapshotId();
-
-      for (Snapshot snapshot : table.snapshots()) {
-        if (snapshot.snapshotId() == fromSnapshotId) {
-          return snapshot.timestampMillis();
-        }
+    OptimizingProcess optimizingProcess = tableRuntime.getOptimizingProcess();
+    if (optimizingProcess != null) {
+      long fromSnapshotId = optimizingProcess.getTargetSnapshotId();
+      Snapshot snapshot = table.snapshot(fromSnapshotId);
+      if (snapshot != null) {
+        return snapshot.timestampMillis();
       }
     }
     return Long.MAX_VALUE;

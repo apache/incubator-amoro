@@ -22,11 +22,14 @@ public interface OptimizingProcess {
 
   long getRunningQuotaTime(long calculatingStartTime, long calculatingEndTime);
 
+  boolean planTasks();
+
   void commit();
 
   MetricsSummary getSummary();
 
   enum Status {
+    PLANNING,
     RUNNING,
     CLOSED,
     SUCCESS,

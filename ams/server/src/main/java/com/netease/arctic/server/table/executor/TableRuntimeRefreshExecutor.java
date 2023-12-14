@@ -67,7 +67,8 @@ public class TableRuntimeRefreshExecutor extends BaseTableExecutor {
         && !tableRuntime.getTableConfiguration().getOptimizingConfig().isEnabled()) {
       OptimizingProcess optimizingProcess = tableRuntime.getOptimizingProcess();
       if (optimizingProcess != null
-          && optimizingProcess.getStatus() == OptimizingProcess.Status.RUNNING) {
+          && (optimizingProcess.getStatus() == OptimizingProcess.Status.RUNNING
+              || optimizingProcess.getStatus() == OptimizingProcess.Status.PLANNING)) {
         optimizingProcess.close();
       }
     }
@@ -80,13 +81,9 @@ public class TableRuntimeRefreshExecutor extends BaseTableExecutor {
       long lastOptimizedChangeSnapshotId = tableRuntime.getLastOptimizedChangeSnapshotId();
       AmoroTable<?> table = loadTable(tableRuntime);
       tableRuntime.refresh(table);
-      ArcticTable arcticTable = (ArcticTable) table.originalTable();
-      if ((arcticTable.isKeyedTable()
-              && (lastOptimizedSnapshotId != tableRuntime.getCurrentSnapshotId()
-                  || lastOptimizedChangeSnapshotId != tableRuntime.getCurrentChangeSnapshotId()))
-          || (arcticTable.isUnkeyedTable()
-              && lastOptimizedSnapshotId != tableRuntime.getCurrentSnapshotId())) {
-        tryEvaluatingPendingInput(tableRuntime, arcticTable);
+      if (lastOptimizedSnapshotId != tableRuntime.getCurrentSnapshotId()
+          || lastOptimizedChangeSnapshotId != tableRuntime.getCurrentChangeSnapshotId()) {
+        tryEvaluatingPendingInput(tableRuntime, (ArcticTable) table.originalTable());
       }
     } catch (Throwable throwable) {
       logger.error("Refreshing table {} failed.", tableRuntime.getTableIdentifier(), throwable);
