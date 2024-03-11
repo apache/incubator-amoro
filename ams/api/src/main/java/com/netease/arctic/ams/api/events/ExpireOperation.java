@@ -18,36 +18,10 @@
 
 package com.netease.arctic.ams.api.events;
 
-import com.netease.arctic.ams.api.TableFormat;
-
-/** An event associated with a table */
-public interface TableEvent extends Event {
-
-  /**
-   * The catalog name that this event source related to.
-   *
-   * @return Catalog name
-   */
-  String catalog();
-
-  /**
-   * The database name that this event source related to.
-   *
-   * @return Database name
-   */
-  String database();
-
-  /**
-   * The table name that this event source related to.
-   *
-   * @return Table name
-   */
-  String table();
-
-  /**
-   * Effective table format
-   *
-   * @return table format
-   */
-  TableFormat format();
+/** Define various expiration operations */
+public enum ExpireOperation {
+  EXPIRE_SNAPSHOTS,
+  REMOVE_ORPHAN_FILES,
+  REMOVE_DANGLING_FILES,
+  EXPIRE_DATA
 }

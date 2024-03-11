@@ -18,36 +18,44 @@
 
 package com.netease.arctic.ams.api.events;
 
-import com.netease.arctic.ams.api.TableFormat;
+import org.immutables.value.Value;
 
-/** An event associated with a table */
-public interface TableEvent extends Event {
+/**
+ * Amoro automatically maintains datalake metadata files(e.g. expire snapshots, clean orphan
+ * files...), every maintenance process will generate an event which could be reported to {@link
+ * com.netease.arctic.ams.api.events.EventListener EventListener}
+ */
+@Value.Immutable
+public interface ExpireEvent extends TableEvent {
+  /**
+   * The expiring process id
+   *
+   * @return id
+   */
+  long processId();
 
   /**
-   * The catalog name that this event source related to.
+   * Operation of expiring(e.g. expire snapshots)
    *
-   * @return Catalog name
+   * @return expiring operation
    */
-  String catalog();
+  ExpireOperation operation();
 
   /**
-   * The database name that this event source related to.
+   * Details of expiring event
    *
-   * @return Database name
+   * @return event detail
    */
-  String database();
+  ExpireResult expireResult();
 
   /**
-   * The table name that this event source related to.
+   * Get expiring event result as target specific Class
    *
-   * @return Table name
+   * @param clazz Subclass of ExpireResult
+   * @return Specific Class
+   * @param <R> Specific Class
    */
-  String table();
-
-  /**
-   * Effective table format
-   *
-   * @return table format
-   */
-  TableFormat format();
+  default <R extends ExpireResult> R getExpireResultAs(Class<R> clazz) {
+    return clazz.cast(expireResult());
+  }
 }

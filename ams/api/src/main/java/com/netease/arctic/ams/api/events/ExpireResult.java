@@ -18,36 +18,14 @@
 
 package com.netease.arctic.ams.api.events;
 
-import com.netease.arctic.ams.api.TableFormat;
+import java.time.Duration;
 
-/** An event associated with a table */
-public interface TableEvent extends Event {
-
+/** Expire event details */
+public interface ExpireResult {
   /**
-   * The catalog name that this event source related to.
+   * total duration of the event
    *
-   * @return Catalog name
+   * @return duration
    */
-  String catalog();
-
-  /**
-   * The database name that this event source related to.
-   *
-   * @return Database name
-   */
-  String database();
-
-  /**
-   * The table name that this event source related to.
-   *
-   * @return Table name
-   */
-  String table();
-
-  /**
-   * Effective table format
-   *
-   * @return table format
-   */
-  TableFormat format();
+  Duration totalDuration();
 }

@@ -20,5 +20,6 @@ package com.netease.arctic.ams.api.events;
 
 /** Event types define */
 public enum EventType {
-  ICEBERG_REPORT
+  ICEBERG_REPORT,
+  EXPIRE_REPORT
 }

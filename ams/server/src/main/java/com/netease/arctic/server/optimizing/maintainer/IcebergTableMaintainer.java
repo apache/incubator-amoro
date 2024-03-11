@@ -18,18 +18,30 @@
 
 package com.netease.arctic.server.optimizing.maintainer;
 
-import static org.apache.iceberg.relocated.com.google.common.primitives.Longs.min;
+import static com.google.common.primitives.Longs.min;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.netease.arctic.ams.api.CommitMetaProducer;
+import com.netease.arctic.ams.api.TableFormat;
+import com.netease.arctic.ams.api.events.EventType;
+import com.netease.arctic.ams.api.events.ExpireEvent;
+import com.netease.arctic.ams.api.events.ExpireOperation;
+import com.netease.arctic.ams.api.events.ExpireResult;
+import com.netease.arctic.ams.api.events.ImmutableExpireEvent;
+import com.netease.arctic.ams.api.events.iceberg.ExpireSnapshotsResult;
+import com.netease.arctic.ams.api.events.iceberg.ImmutableExpireSnapshotsResult;
 import com.netease.arctic.io.ArcticFileIO;
 import com.netease.arctic.io.PathInfo;
 import com.netease.arctic.io.SupportsFileSystemOperations;
 import com.netease.arctic.server.ArcticServiceConstants;
+import com.netease.arctic.server.manager.EventsManager;
 import com.netease.arctic.server.table.DataExpirationConfig;
 import com.netease.arctic.server.table.TableConfiguration;
 import com.netease.arctic.server.table.TableRuntime;
 import com.netease.arctic.server.utils.IcebergTableUtil;
+import com.netease.arctic.table.TableIdentifier;
 import com.netease.arctic.utils.TableFileUtil;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.ContentFile;
 import org.apache.iceberg.ContentScanTask;
@@ -54,7 +66,6 @@ import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.FileInfo;
 import org.apache.iceberg.io.SupportsPrefixOperations;
-import org.apache.iceberg.relocated.com.google.common.annotations.VisibleForTesting;
 import org.apache.iceberg.relocated.com.google.common.base.Strings;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
@@ -67,6 +78,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -74,6 +86,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -81,6 +94,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
@@ -95,6 +109,7 @@ public class IcebergTableMaintainer implements TableMaintainer {
 
   public static final String METADATA_FOLDER_NAME = "metadata";
   public static final String DATA_FOLDER_NAME = "data";
+  public static final String STATISTICS_FILE = "STATISTICS";
   // same as org.apache.iceberg.flink.sink.IcebergFilesCommitter#FLINK_JOB_ID
   public static final String FLINK_JOB_ID = "flink.job-id";
   // same as org.apache.iceberg.flink.sink.IcebergFilesCommitter#MAX_COMMITTED_CHECKPOINT_ID
@@ -159,7 +174,13 @@ public class IcebergTableMaintainer implements TableMaintainer {
     if (!expireSnapshotEnabled(tableRuntime)) {
       return;
     }
-    expireSnapshots(mustOlderThan(tableRuntime, System.currentTimeMillis()));
+    ExpireEvent event =
+        expireSnapshots(
+            TableIdentifier.of(tableRuntime.getTableIdentifier().getIdentifier()),
+            tableRuntime.getFormat(),
+            mustOlderThan(tableRuntime, System.currentTimeMillis()));
+
+    reportExpireEvent(event);
   }
 
   protected boolean expireSnapshotEnabled(TableRuntime tableRuntime) {
@@ -168,21 +189,35 @@ public class IcebergTableMaintainer implements TableMaintainer {
   }
 
   @VisibleForTesting
-  void expireSnapshots(long mustOlderThan) {
-    expireSnapshots(mustOlderThan, expireSnapshotNeedToExcludeFiles());
+  ExpireEvent expireSnapshots(
+      TableIdentifier tableIdentifier, TableFormat format, long mustOlderThan) {
+    long triggerTimestamp = System.currentTimeMillis();
+    ExpireSnapshotsResult expireSnapshotsResult =
+        expireSnapshots(mustOlderThan, expireSnapshotNeedToExcludeFiles());
+
+    return triggerExpireEvent(tableIdentifier, format, expireSnapshotsResult, triggerTimestamp);
   }
 
-  private void expireSnapshots(long olderThan, Set<String> exclude) {
+  private ExpireSnapshotsResult expireSnapshots(long olderThan, Set<String> exclude) {
     LOG.debug("start expire snapshots older than {}, the exclude is {}", olderThan, exclude);
     final AtomicInteger toDeleteFiles = new AtomicInteger(0);
-    final AtomicInteger deleteFiles = new AtomicInteger(0);
     Set<String> parentDirectory = new HashSet<>();
+    Map<String, Pair<String, String>> path2FileInfo = new HashMap<>();
+    IcebergTableUtil.getAllContentFile(table)
+        .forEach(
+            f -> path2FileInfo.putIfAbsent(f.getLeft(), Pair.of(f.getLeft(), f.getRight().name())));
+    IcebergTableUtil.getAllStatisticsFilePath(table)
+        .forEach(
+            location -> path2FileInfo.putIfAbsent(location, Pair.of(location, STATISTICS_FILE)));
+    List<Pair<String, String>> deletedFiles = new CopyOnWriteArrayList<>();
+    long start = System.currentTimeMillis();
     table
         .expireSnapshots()
         .retainLast(1)
         .expireOlderThan(olderThan)
         .deleteWith(
-            file -> {
+            fileUri -> {
+              String file = TableFileUtil.getUriPath(fileUri);
               try {
                 if (exclude.isEmpty()) {
                   arcticFileIO().deleteFile(file);
@@ -194,7 +229,13 @@ public class IcebergTableMaintainer implements TableMaintainer {
                   }
                 }
                 parentDirectory.add(new Path(file).getParent().toString());
-                deleteFiles.incrementAndGet();
+                Optional<Pair<String, String>> fileInfo =
+                    Optional.ofNullable(path2FileInfo.get(file));
+                if (fileInfo.isPresent()) {
+                  deletedFiles.add(Pair.of(file, fileInfo.get().getRight()));
+                } else {
+                  deletedFiles.add(Pair.of(file, METADATA_FOLDER_NAME.toUpperCase()));
+                }
               } catch (Throwable t) {
                 LOG.warn("failed to delete file " + file, t);
               } finally {
@@ -218,7 +259,66 @@ public class IcebergTableMaintainer implements TableMaintainer {
         "to delete {} files in {}, success delete {} files",
         toDeleteFiles.get(),
         getTable().name(),
-        deleteFiles.get());
+        deletedFiles.size());
+
+    return getExpireSnapshotsResult(
+        deletedFiles, Duration.ofMillis(System.currentTimeMillis() - start));
+  }
+
+  protected void reportExpireEvent(ExpireEvent event) {
+    EventsManager.getInstance().emit(event);
+  }
+
+  protected ExpireEvent triggerExpireEvent(
+      TableIdentifier tableIdentifier,
+      TableFormat format,
+      ExpireResult expireResult,
+      long triggerTimestamp) {
+    return ImmutableExpireEvent.builder()
+        .catalog(tableIdentifier.getCatalog())
+        .database(tableIdentifier.getDatabase())
+        .table(tableIdentifier.getTableName())
+        .format(format)
+        .expireResult(expireResult)
+        .timestampMillis(triggerTimestamp)
+        .processId(triggerTimestamp)
+        .operation(ExpireOperation.EXPIRE_SNAPSHOTS)
+        .type(EventType.EXPIRE_REPORT)
+        .build();
+  }
+
+  protected ExpireSnapshotsResult getExpireSnapshotsResult(
+      List<Pair<String, String>> deletedFiles, Duration duration) {
+    Set<String> dataFiles = new HashSet<>();
+    Set<String> posDeleteFiles = new HashSet<>();
+    Set<String> eqDeleteFiles = new HashSet<>();
+    Set<String> metadataFiles = new HashSet<>();
+    Set<String> statisticFiles = new HashSet<>();
+    deletedFiles.forEach(
+        fileInfo -> {
+          String path = fileInfo.getKey();
+          String type = fileInfo.getValue();
+          if (FileContent.DATA.name().equals(type)) {
+            dataFiles.add(path);
+          } else if (FileContent.EQUALITY_DELETES.name().equals(type)) {
+            eqDeleteFiles.add(path);
+          } else if (FileContent.POSITION_DELETES.name().equals(type)) {
+            posDeleteFiles.add(path);
+          } else if (METADATA_FOLDER_NAME.toUpperCase().equals(type)) {
+            metadataFiles.add(path);
+          } else if (STATISTICS_FILE.equals(type)) {
+            statisticFiles.add(path);
+          }
+        });
+
+    return ImmutableExpireSnapshotsResult.builder()
+        .totalDuration(duration)
+        .deletedDataFiles(dataFiles)
+        .deletedPositionDeleteFiles(posDeleteFiles)
+        .deletedEqualityDeleteFiles(eqDeleteFiles)
+        .deletedMetadataFiles(metadataFiles)
+        .deletedStatisticsFiles(statisticFiles)
+        .build();
   }
 
   @Override

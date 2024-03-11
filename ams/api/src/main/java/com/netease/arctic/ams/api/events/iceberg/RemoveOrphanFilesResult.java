@@ -16,38 +16,24 @@
  * limitations under the License.
  */
 
-package com.netease.arctic.ams.api.events;
+package com.netease.arctic.ams.api.events.iceberg;
 
-import com.netease.arctic.ams.api.TableFormat;
+import com.netease.arctic.ams.api.events.ExpireResult;
+import org.apache.iceberg.relocated.com.google.common.collect.Sets;
+import org.immutables.value.Value;
 
-/** An event associated with a table */
-public interface TableEvent extends Event {
+import java.util.Set;
 
-  /**
-   * The catalog name that this event source related to.
-   *
-   * @return Catalog name
-   */
-  String catalog();
+/** Event details for cleaning orphan files in native Iceberg format */
+@Value.Immutable
+public abstract class RemoveOrphanFilesResult implements ExpireResult {
+  @Value.Default
+  public Set<String> removedFiles() {
+    return Sets.newHashSet();
+  }
 
-  /**
-   * The database name that this event source related to.
-   *
-   * @return Database name
-   */
-  String database();
-
-  /**
-   * The table name that this event source related to.
-   *
-   * @return Table name
-   */
-  String table();
-
-  /**
-   * Effective table format
-   *
-   * @return table format
-   */
-  TableFormat format();
+  @Value.Default
+  public long releasedFileSize() {
+    return 0L;
+  }
 }
