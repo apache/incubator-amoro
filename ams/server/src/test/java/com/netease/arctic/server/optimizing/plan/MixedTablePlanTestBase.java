@@ -270,7 +270,7 @@ public abstract class MixedTablePlanTestBase extends TableTestBase {
     segmentFiles.addAll(rePosSegmentFiles);
     segmentFiles.addAll(rewrittenSegmentFiles);
 
-    setTargetSize(segmentFiles, true);
+    setTargetSize(segmentFiles);
     setFragmentRatio(segmentFiles);
     assertSegmentFiles(segmentFiles);
     assertFragmentFiles(fragmentFiles);
@@ -350,17 +350,29 @@ public abstract class MixedTablePlanTestBase extends TableTestBase {
     return partitionPlan;
   }
 
-  private void setTargetSize(List<DataFile> dataFiles, boolean isCompleteSegment) {
+  protected void setTargetSize(List<DataFile> dataFiles) {
     Long maxFileSizeBytes =
         dataFiles.stream()
             .map(ContentFile::fileSizeInBytes)
             .max(Long::compareTo)
             .orElseThrow(() -> new IllegalStateException("dataFiles can't not be empty"));
-    long targetFileSizeBytes =
-        isCompleteSegment ? maxFileSizeBytes + 1 : (maxFileSizeBytes * 2 + 1);
+    long targetFileSizeBytes = maxFileSizeBytes + 1;
     getArcticTable()
         .updateProperties()
         .set(TableProperties.SELF_OPTIMIZING_TARGET_SIZE, targetFileSizeBytes + "")
+        .commit();
+  }
+
+  protected void setMaxTaskSize(List<DataFile> dataFiles) {
+    Long maxFileSizeBytes =
+        dataFiles.stream()
+            .map(ContentFile::fileSizeInBytes)
+            .max(Long::compareTo)
+            .orElseThrow(() -> new IllegalStateException("dataFiles can't not be empty"));
+    long targetFileSizeBytes = maxFileSizeBytes + 1;
+    getArcticTable()
+        .updateProperties()
+        .set(TableProperties.SELF_OPTIMIZING_MAX_TASK_SIZE, targetFileSizeBytes + "")
         .commit();
   }
 
@@ -402,12 +414,6 @@ public abstract class MixedTablePlanTestBase extends TableTestBase {
         .updateProperties()
         .set(TableProperties.SELF_OPTIMIZING_MINOR_TRIGGER_INTERVAL, "-1")
         .commit();
-  }
-
-  private void resetTargetSize() {
-    updateTableProperty(
-        TableProperties.SELF_OPTIMIZING_TARGET_SIZE,
-        TableProperties.SELF_OPTIMIZING_TARGET_SIZE_DEFAULT + "");
   }
 
   protected void updateTableProperty(String key, String value) {
@@ -506,6 +512,20 @@ public abstract class MixedTablePlanTestBase extends TableTestBase {
     assertFiles(rewrittenDataFiles, actual.getInput().rewrittenDataFiles());
     assertFiles(readOnlyDeleteFiles, actual.getInput().readOnlyDeleteFiles());
     assertFiles(rePosDeletedDataFiles, actual.getInput().rePosDeletedDataFiles());
+    assertTaskProperties(buildProperties(), actual.properties());
+  }
+
+  protected void assertTaskFileCount(
+      TaskDescriptor actual,
+      int rewrittenDataFiles,
+      int rePosDeletedDataFiles,
+      int readOnlyDeleteFiles,
+      int rewrittenDeleteFiles) {
+    Assert.assertEquals(actual.getPartition(), getPartitionPath());
+    Assert.assertEquals(rewrittenDeleteFiles, actual.getInput().rewrittenDeleteFiles().length);
+    Assert.assertEquals(rewrittenDataFiles, actual.getInput().rewrittenDataFiles().length);
+    Assert.assertEquals(readOnlyDeleteFiles, actual.getInput().readOnlyDeleteFiles().length);
+    Assert.assertEquals(rePosDeletedDataFiles, actual.getInput().rePosDeletedDataFiles().length);
     assertTaskProperties(buildProperties(), actual.properties());
   }
 
