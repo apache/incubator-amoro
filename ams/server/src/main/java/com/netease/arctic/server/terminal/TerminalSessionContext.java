@@ -25,6 +25,8 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.LineNumberReader;
@@ -84,8 +86,14 @@ public class TerminalSessionContext {
   }
 
   public synchronized void submit(
-      String catalog, String script, int fetchLimit, boolean stopOnError) {
-    ExecutionTask task = new ExecutionTask(catalog, script, fetchLimit, stopOnError);
+      String catalog,
+      TableMetaStore metaStore,
+      String proxyUser,
+      String script,
+      int fetchLimit,
+      boolean stopOnError) {
+    ExecutionTask task =
+        new ExecutionTask(catalog, metaStore, proxyUser, script, fetchLimit, stopOnError);
     if (!isReadyToExecute()) {
       throw new IllegalStateException(
           "current session is not ready to execute. status: " + status.get().name());
@@ -178,9 +186,20 @@ public class TerminalSessionContext {
     private final int fetchLimits;
     private final boolean stopOnError;
     private final String catalog;
+    private final TableMetaStore tableMetaStore;
 
-    public ExecutionTask(String catalog, String script, int fetchLimits, boolean stopOnError) {
+    @Nullable private final String proxyUser;
+
+    public ExecutionTask(
+        String catalog,
+        TableMetaStore tableMetaStore,
+        String proxyUser,
+        String script,
+        int fetchLimits,
+        boolean stopOnError) {
       this.catalog = catalog;
+      this.tableMetaStore = tableMetaStore;
+      this.proxyUser = proxyUser;
       if (script.trim().endsWith(";")) {
         this.script = script;
       } else {
@@ -193,7 +212,8 @@ public class TerminalSessionContext {
     @Override
     public ExecutionStatus get() {
       try {
-        return metaStore.doAs(
+        return metaStore.doAsImpersonating(
+            proxyUser,
             () -> {
               TerminalSession session = lazyLoadSession(this);
               executionResult.appendLog("fetch terminal session: " + sessionId);
@@ -278,7 +298,9 @@ public class TerminalSessionContext {
       TerminalSession.ResultSet rs = null;
       long begin = System.currentTimeMillis();
       try {
-        rs = session.executeStatement(catalog, statement);
+        rs =
+            tableMetaStore.doAsImpersonating(
+                proxyUser, () -> session.executeStatement(catalog, statement));
         executionResult.appendLogs(session.logs());
       } catch (Throwable t) {
         executionResult.appendLogs(session.logs());
