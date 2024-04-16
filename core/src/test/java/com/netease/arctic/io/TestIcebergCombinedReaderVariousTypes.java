@@ -137,6 +137,7 @@ public class TestIcebergCombinedReaderVariousTypes extends TableTestBase {
 
     CloseableIterable<Record> readData =
         new GenericCombinedIcebergDataReader(
+                table,
                 table.io(),
                 table.schema(),
                 table.spec(),
@@ -188,6 +189,7 @@ public class TestIcebergCombinedReaderVariousTypes extends TableTestBase {
     CombinedDeleteFilter.FILTER_EQ_DELETE_TRIGGER_RECORD_COUNT = 100L;
     GenericCombinedIcebergDataReader reader =
         new GenericCombinedIcebergDataReader(
+            table,
             table.io(),
             table.schema(),
             table.spec(),
