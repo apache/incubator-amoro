@@ -24,6 +24,7 @@ import org.apache.amoro.api.Blocker;
 import org.apache.amoro.api.ServerTableIdentifier;
 import org.apache.amoro.api.TableIdentifier;
 import org.apache.amoro.server.catalog.CatalogService;
+import org.apache.amoro.server.dashboard.model.TableRuntimeBean;
 
 import java.util.List;
 import java.util.Map;
@@ -146,4 +147,8 @@ public interface TableService extends CatalogService, TableManager {
    * @return block list
    */
   List<Blocker> getBlockers(TableIdentifier tableIdentifier);
+
+  List<TableRuntimeBean> getTableRuntimesForAllGroup(int limit, int offset);
+
+  List<TableRuntimeBean> getTableRuntimes(String optimizerGroup, int limit, int offset);
 }
