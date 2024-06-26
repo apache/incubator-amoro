@@ -19,6 +19,7 @@
 package org.apache.amoro.server.dashboard.controller;
 
 import io.javalin.http.Context;
+import org.apache.amoro.TableFormat;
 import org.apache.amoro.api.ServerTableIdentifier;
 import org.apache.amoro.api.resource.Resource;
 import org.apache.amoro.api.resource.ResourceGroup;
@@ -27,6 +28,7 @@ import org.apache.amoro.server.DefaultOptimizingService;
 import org.apache.amoro.server.dashboard.model.OptimizerInstanceInfo;
 import org.apache.amoro.server.dashboard.model.OptimizerResourceInfo;
 import org.apache.amoro.server.dashboard.model.TableOptimizingInfo;
+import org.apache.amoro.server.dashboard.model.TableRuntimeBean;
 import org.apache.amoro.server.dashboard.response.OkResponse;
 import org.apache.amoro.server.dashboard.response.PageResult;
 import org.apache.amoro.server.dashboard.utils.OptimizingUtil;
@@ -64,8 +66,25 @@ public class OptimizerController {
     Integer pageSize = ctx.queryParamAsClass("pageSize", Integer.class).getOrDefault(20);
     int offset = (page - 1) * pageSize;
 
+    // get all info from underlying table table_runtime
+    List<TableRuntimeBean> tableRuntimeBeans;
+    if (ALL_GROUP.equals(optimizerGroup)) {
+      tableRuntimeBeans = tableService.getTableRuntimesForAllGroup(pageSize, offset);
+    } else {
+      tableRuntimeBeans = tableService.getTableRuntimes(optimizerGroup, pageSize, offset);
+    }
+
     List<TableRuntime> tableRuntimes = new ArrayList<>();
-    List<ServerTableIdentifier> tables = tableService.listManagedTables();
+    List<ServerTableIdentifier> tables = new ArrayList<>();
+    for (TableRuntimeBean bean : tableRuntimeBeans) {
+      tables.add(
+          ServerTableIdentifier.of(
+              bean.getTableId(),
+              bean.getCatalogName(),
+              bean.getDbName(),
+              bean.getTableName(),
+              TableFormat.ICEBERG)); // current hard code for this.
+    }
     for (ServerTableIdentifier identifier : tables) {
       TableRuntime tableRuntime = tableService.getRuntime(identifier);
       if (tableRuntime == null) {

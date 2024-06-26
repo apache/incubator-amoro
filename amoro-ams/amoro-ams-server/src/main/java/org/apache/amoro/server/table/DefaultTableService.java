@@ -34,6 +34,7 @@ import org.apache.amoro.server.catalog.CatalogBuilder;
 import org.apache.amoro.server.catalog.ExternalCatalog;
 import org.apache.amoro.server.catalog.InternalCatalog;
 import org.apache.amoro.server.catalog.ServerCatalog;
+import org.apache.amoro.server.dashboard.model.TableRuntimeBean;
 import org.apache.amoro.server.exception.AlreadyExistsException;
 import org.apache.amoro.server.exception.IllegalMetadataException;
 import org.apache.amoro.server.exception.ObjectNotExistsException;
@@ -314,6 +315,20 @@ public class DefaultTableService extends StatedPersistentBase implements TableSe
     return getAndCheckExist(getOrSyncServerTableIdentifier(tableIdentifier)).getBlockers().stream()
         .map(TableBlocker::buildBlocker)
         .collect(Collectors.toList());
+  }
+
+  @Override
+  public List<TableRuntimeBean> getTableRuntimes(String optimizerGroup, int limit, int offset) {
+    checkStarted();
+    return getAs(
+        TableMetaMapper.class,
+        mapper -> mapper.selectTableRuntimesForOptimizerGroup(optimizerGroup, limit, offset));
+  }
+
+  @Override
+  public List<TableRuntimeBean> getTableRuntimesForAllGroup(int limit, int offset) {
+    checkStarted();
+    return getAs(TableMetaMapper.class, mapper -> mapper.selectTableRuntimes(limit, offset));
   }
 
   private InternalCatalog getInternalCatalog(String catalogName) {
