@@ -332,7 +332,7 @@ public class TableController {
     TableIdentifier tableIdentifier = TableIdentifier.of(catalog, db, table);
     List<OptimizingTaskInfo> optimizingTaskInfos =
         tableDescriptor.getOptimizingProcessTaskInfos(
-            tableIdentifier.buildTableIdentifier(), Long.parseLong(processId));
+            tableIdentifier.buildTableIdentifier(), processId);
 
     PageResult<OptimizingTaskInfo> pageResult = PageResult.of(optimizingTaskInfos, offset, limit);
     ctx.json(OkResponse.of(pageResult));
@@ -382,8 +382,7 @@ public class TableController {
 
     List<PartitionFileBaseInfo> result =
         tableDescriptor.getSnapshotDetail(
-            TableIdentifier.of(catalog, database, tableName).buildTableIdentifier(),
-            Long.parseLong(snapshotId));
+            TableIdentifier.of(catalog, database, tableName).buildTableIdentifier(), snapshotId);
     int offset = (page - 1) * pageSize;
     PageResult<PartitionFileBaseInfo> amsPageResult = PageResult.of(result, offset, pageSize);
     ctx.json(OkResponse.of(amsPageResult));
@@ -487,6 +486,8 @@ public class TableController {
               return TableMeta.TableType.PAIMON.toString();
             case ICEBERG:
               return TableMeta.TableType.ICEBERG.toString();
+            case HUDI:
+              return TableMeta.TableType.HUDI.toString();
             default:
               throw new IllegalStateException("Unknown format");
           }

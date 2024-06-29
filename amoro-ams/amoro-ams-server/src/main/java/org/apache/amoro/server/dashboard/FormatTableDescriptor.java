@@ -47,7 +47,7 @@ public interface FormatTableDescriptor {
       AmoroTable<?> amoroTable, String ref, OperationType operationType);
 
   /** Get the snapshot detail information of the {@link AmoroTable}. */
-  List<PartitionFileBaseInfo> getSnapshotDetail(AmoroTable<?> amoroTable, long snapshotId);
+  List<PartitionFileBaseInfo> getSnapshotDetail(AmoroTable<?> amoroTable, String snapshotId);
 
   /** Get the DDL information of the {@link AmoroTable}. */
   List<DDLInfo> getTableOperations(AmoroTable<?> amoroTable);
@@ -64,7 +64,7 @@ public interface FormatTableDescriptor {
       AmoroTable<?> amoroTable, int limit, int offset);
 
   /** Get the paged optimizing process tasks information of the {@link AmoroTable}. */
-  List<OptimizingTaskInfo> getOptimizingTaskInfos(AmoroTable<?> amoroTable, long processId);
+  List<OptimizingTaskInfo> getOptimizingTaskInfos(AmoroTable<?> amoroTable, String processId);
 
   /** Get the tag information of the {@link AmoroTable}. */
   List<TagOrBranchInfo> getTableTags(AmoroTable<?> amoroTable);
