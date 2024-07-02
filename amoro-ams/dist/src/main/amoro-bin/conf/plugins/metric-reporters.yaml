@@ -18,8 +18,8 @@
 # This file is config file for plugin metric reporter
 # configurations of metric reporters
 
-metric-reporters:
-  - name: prometheus-exporter            # configs for prometheus exporter
-    enabled: true
-    properties:
-       port: 7001
+#metric-reporters:
+#  - name: prometheus-exporter            # configs for prometheus exporter
+#    enabled: true
+#    properties:
+#       port: 7001
