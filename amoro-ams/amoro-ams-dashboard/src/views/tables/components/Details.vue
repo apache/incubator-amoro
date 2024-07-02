@@ -62,6 +62,7 @@ const changeMetricsMap: IMap<string | number> = {
 const state = reactive({
   detailLoading: false,
   baseDetailInfo: {
+    optimizingStatus: '',
     tableType: '',
     tableName: '',
     createTime: '',
@@ -93,8 +94,9 @@ async function getTableDetails() {
     state.baseDetailInfo = {
       ...tableSummary,
       tableType,
-      tableName: tableIdentifier?.tableName || '',
+      tableName: `${tableIdentifier?.catalog || ''}.${tableIdentifier?.database || ''}.${tableIdentifier?.tableName || ''}`,
       createTime: createTime ? dateFormat(createTime) : '',
+      lastCommitTime: dateFormat(changeMetrics?.lastCommitTime || baseMetrics?.lastCommitTime),
       hasPartition: !!(partitionColumnList?.length),
     }
 
